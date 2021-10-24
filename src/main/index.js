@@ -19,7 +19,7 @@ let mainWindow, webContents;
 const winURL =
   process.env.NODE_ENV === "development"
     ? `http://localhost:9080`
-    : path.join('file://', __dirname, path.sep, 'index.html')
+    : path.join("file://", __dirname, path.sep, "index.html");
 
 function createWindow() {
   /**
@@ -76,11 +76,7 @@ const { autoUpdater } = require("electron-updater");
 const feedUrl = `http://localhost:8080/public`; // 更新包位置
 // 主进程监听渲染进程传来的信息
 ipcMain.on("update", (e, arg) => {
-  if (process.env.NODE_ENV === "production") {
-    checkForUpdates();
-  } else {
-    console.log("非生产环境，暂时无法调试版本更新");
-  }
+  checkForUpdates();
   console.log("update");
 });
 
@@ -89,9 +85,9 @@ let checkForUpdates = () => {
   autoUpdater.setFeedURL(feedUrl);
 
   // 下面是自动更新的整个生命周期所发生的事件
-  autoUpdater.on("error", function(message, err) {
-    console.log(message);
-    sendUpdateMessage("error:" + err, message);
+  //错误
+  autoUpdater.on("error", function(error, message) {
+    sendUpdateMessage("error:", { error, message });
   });
   // 当开始检查更新的时候触发
   autoUpdater.on("checking-for-update", function(message) {
@@ -112,14 +108,7 @@ let checkForUpdates = () => {
     sendUpdateMessage("downloadProgress", progressObj);
   });
   // 更新下载完成事件
-  autoUpdater.on("update-downloaded", function(
-    event,
-    releaseNotes,
-    releaseName,
-    releaseDate,
-    updateUrl,
-    quitAndUpdate
-  ) {
+  autoUpdater.on("update-downloaded", function() {
     sendUpdateMessage("isUpdateNow");
     ipcMain.on("updateNow", (e, arg) => {
       autoUpdater.quitAndInstall();
@@ -131,9 +120,8 @@ let checkForUpdates = () => {
 };
 
 // 主进程主动发送消息给渲染进程函数
-function sendUpdateMessage(message, data) {
-  console.log({ message, data });
-  webContents.send("message", { message, data });
+function sendUpdateMessage(title, data) {
+  webContents.send("message", { title, data });
 }
 
 // app.on('ready', () => {
