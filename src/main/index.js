@@ -1,49 +1,66 @@
-import { app, BrowserWindow } from 'electron'
-import '../renderer/store'
+import { app, BrowserWindow, ipcMain } from "electron";
+import "../renderer/store";
+import * as path from "path";
 
 /**
  * Set `__static` path to static files in production
  * https://simulatedgreg.gitbooks.io/electron-vue/content/en/using-static-assets.html
  */
-if (process.env.NODE_ENV !== 'development') {
-  global.__static = require('path').join(__dirname, '/static').replace(/\\/g, '\\\\')
+if (process.env.NODE_ENV !== "development") {
+  // global.__static = require("path")
+  //   .join(__dirname, "/static")
+  //   .replace(/\\/g, "\\\\");
+
+  global.__static = path.join(__dirname, "/static").replace(/\\/g, "\\\\");
+  // {{#if_eq eslintConfig 'airbnb'}}
 }
 
-let mainWindow
-const winURL = process.env.NODE_ENV === 'development'
-  ? `http://localhost:9080`
-  : `file://${__dirname}/index.html`
+let mainWindow, webContents;
+const winURL =
+  process.env.NODE_ENV === "development"
+    ? `http://localhost:9080`
+    : path.join('file://', __dirname, path.sep, 'index.html')
 
-function createWindow () {
+function createWindow() {
   /**
    * Initial window options
    */
   mainWindow = new BrowserWindow({
     height: 563,
     useContentSize: true,
-    width: 1000
-  })
+    width: 1000,
+    webPreferences: {
+      contextIsolation: false,
+      nodeIntegration: true, //在网页中集成Node
+      nodeIntegrationInWorker: true, //是否在Web工作器中启用了Node集成
+      enableRemoteModule: true,
+    },
+  });
 
-  mainWindow.loadURL(winURL)
+  mainWindow.loadURL(winURL);
+  webContents = mainWindow.webContents;
 
-  mainWindow.on('closed', () => {
-    mainWindow = null
-  })
+  mainWindow.on("closed", () => {
+    mainWindow = null;
+  });
 }
 
-app.on('ready', createWindow)
+app.on("ready", () => {
+  createWindow();
+  // checkForUpdates();
+});
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit()
+app.on("window-all-closed", () => {
+  if (process.platform !== "darwin") {
+    app.quit();
   }
-})
+});
 
-app.on('activate', () => {
+app.on("activate", () => {
   if (mainWindow === null) {
-    createWindow()
+    createWindow();
   }
-})
+});
 
 /**
  * Auto Updater
@@ -53,14 +70,72 @@ app.on('activate', () => {
  * https://simulatedgreg.gitbooks.io/electron-vue/content/en/using-electron-builder.html#auto-updating
  */
 
-/*
-import { autoUpdater } from 'electron-updater'
+// import { autoUpdater } from 'electron-updater'
+const { autoUpdater } = require("electron-updater");
 
-autoUpdater.on('update-downloaded', () => {
-  autoUpdater.quitAndInstall()
-})
+const feedUrl = `http://localhost:8080/public`; // 更新包位置
+// 主进程监听渲染进程传来的信息
+ipcMain.on("update", (e, arg) => {
+  if (process.env.NODE_ENV === "production") {
+    checkForUpdates();
+  } else {
+    console.log("非生产环境，暂时无法调试版本更新");
+  }
+  console.log("update");
+});
 
-app.on('ready', () => {
-  if (process.env.NODE_ENV === 'production') autoUpdater.checkForUpdates()
-})
- */
+let checkForUpdates = () => {
+  // 配置安装包远端服务器
+  autoUpdater.setFeedURL(feedUrl);
+
+  // 下面是自动更新的整个生命周期所发生的事件
+  autoUpdater.on("error", function(message, err) {
+    console.log(message);
+    sendUpdateMessage("error:" + err, message);
+  });
+  // 当开始检查更新的时候触发
+  autoUpdater.on("checking-for-update", function(message) {
+    sendUpdateMessage("checking-for-update", message);
+  });
+  // 当发现有可用更新的时候触发，更新包下载会自动开始
+  autoUpdater.on("update-available", function(message) {
+    sendUpdateMessage("update-available", message);
+  });
+
+  // // 当发现版本为最新版本触发
+  autoUpdater.on("update-not-available", function(message) {
+    sendUpdateMessage("update-not-available", message);
+  });
+
+  // 更新下载进度事件
+  autoUpdater.on("download-progress", function(progressObj) {
+    sendUpdateMessage("downloadProgress", progressObj);
+  });
+  // 更新下载完成事件
+  autoUpdater.on("update-downloaded", function(
+    event,
+    releaseNotes,
+    releaseName,
+    releaseDate,
+    updateUrl,
+    quitAndUpdate
+  ) {
+    sendUpdateMessage("isUpdateNow");
+    ipcMain.on("updateNow", (e, arg) => {
+      autoUpdater.quitAndInstall();
+    });
+  });
+
+  //执行自动更新检查
+  autoUpdater.checkForUpdates();
+};
+
+// 主进程主动发送消息给渲染进程函数
+function sendUpdateMessage(message, data) {
+  console.log({ message, data });
+  webContents.send("message", { message, data });
+}
+
+// app.on('ready', () => {
+//   if (process.env.NODE_ENV === 'production') autoUpdater.checkForUpdates()
+// })
